@@ -108,7 +108,7 @@ python app.py output/ep691461_audio.m4a
 
 1. In the **Episodes** tab, paste any Bilibili bangumi URL or episode ID into the input and click **Load Season**.
 2. The full season episode list appears. Episodes already downloaded show a **Study** button; others show **Download**.
-3. Click **Download** on an individual episode — it downloads in the background. Your main Brave window stays open.
+3. Click **Download** on an individual episode — it downloads in the background. Your main Brave window stays open. A live progress bar appears in the row and updates every 2 seconds while the audio is streaming.
 4. Once the status changes to **Ready**, click **Study** to load the transcript and begin.
 
 Previously loaded seasons are saved automatically. Season name chips appear below the input on reload — click one to jump straight back without re-pasting the URL.
@@ -202,7 +202,8 @@ The downloader Brave profile opens in a new window, fetches the audio stream, do
 │  Ep 7   间谍过家家 第7话   ✓ Ready        [Study]        │
 │  Ep 8   间谍过家家 第8话   Transcribing…                 │
 │  Ep 9   间谍过家家 第9话   Queued                        │
-│  Ep 10  间谍过家家 第10话  – Not downloaded  [Download]  │
+│  Ep 10  间谍过家家 第10话  Downloading ▓▓░░ 43%          │
+│  Ep 11  间谍过家家 第11话  – Not downloaded  [Download]  │
 └─────────────────────────────────────────────────────────┘
 ```
 

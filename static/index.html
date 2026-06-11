@@ -278,6 +278,26 @@
   .ep-status.error { background: #3a1a1a; color: #df6f6f; }
   .ep-status.queued { background: #1a2030; color: #6699cc; }
 
+  .ep-dl-bar {
+    display: inline-block;
+    width: 56px;
+    height: 5px;
+    background: #4a4a1a;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin: 0 5px;
+    overflow: hidden;
+  }
+  .ep-dl-fill {
+    display: block;
+    height: 100%;
+    background: #dfdf4f;
+    border-radius: 3px;
+    transition: width 0.4s linear;
+    min-width: 4px;
+  }
+  .ep-dl-pct { font-size: 11px; opacity: 0.75; }
+
   .ep-btn {
     border: none;
     border-radius: 6px;
@@ -721,35 +741,49 @@
       return;
     }
 
-    updateEpRowStatus(row, ep_id, 'downloading');
+    updateEpRowStatus(row, ep_id, 'downloading', null, null);
     startPolling(ep_id);
   }
 
   function startPolling(ep_id) {
     if (pollTimers[ep_id]) return;
-    pollTimers[ep_id] = setInterval(() => pollStatus(ep_id), 3000);
+    pollTimers[ep_id] = setInterval(() => pollStatus(ep_id), 2000);
   }
 
   async function pollStatus(ep_id) {
     try {
       const data = await fetch(`/api/download/status/${ep_id}`).then(r => r.json());
-      if (data.status !== 'downloading') {
+      const row = document.getElementById(`ep-row-${ep_id}`);
+      if (data.status === 'downloading') {
+        if (row) updateEpRowStatus(row, ep_id, 'downloading', null, data.progress);
+      } else {
         clearInterval(pollTimers[ep_id]);
         delete pollTimers[ep_id];
-        const row = document.getElementById(`ep-row-${ep_id}`);
         if (row) updateEpRowStatus(row, ep_id, data.status, data.log);
       }
     } catch {}
   }
 
-  function updateEpRowStatus(row, ep_id, status, log) {
+  function updateEpRowStatus(row, ep_id, status, log, progress) {
     const acts = row.querySelector('.ep-actions');
     if (!acts) return;
-    // Remove any existing log panel
     row.querySelector('.ep-log')?.remove();
 
     if (status === 'downloading') {
-      acts.innerHTML = '<span class="ep-status downloading">Downloading...</span>';
+      // If already showing the progress bar, just update fill width and pct text
+      const fill = acts.querySelector('.ep-dl-fill');
+      const pctEl = acts.querySelector('.ep-dl-pct');
+      if (fill && pctEl) {
+        if (progress != null) {
+          fill.style.width = progress.toFixed(0) + '%';
+          pctEl.textContent = progress.toFixed(0) + '%';
+        }
+        return;
+      }
+      // First time — build the downloading badge with progress bar
+      const pct = (progress != null) ? progress.toFixed(0) : '0';
+      acts.innerHTML = `<span class="ep-status downloading">Downloading<span class="ep-dl-bar"><span class="ep-dl-fill" style="width:${pct}%"></span></span><span class="ep-dl-pct">${pct}%</span></span>`;
+      return;
     } else if (status === 'done') {
       acts.innerHTML = `<span class="ep-status ready">Ready</span><button class="ep-btn study-btn" data-ep="${ep_id}">Study</button>`;
       acts.querySelector('.study-btn').addEventListener('click', () => studyEpisode(ep_id, row));

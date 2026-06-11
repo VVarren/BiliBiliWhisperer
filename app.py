@@ -134,6 +134,23 @@ def _tail_log(ep_id: str, lines: int = 20) -> str:
     return "\n".join(text.splitlines()[-lines:])
 
 
+def _parse_download_progress(ep_id: str) -> float | None:
+    """Return the latest download percentage (0–100) from the log, or None if not yet available."""
+    p = _log_path(ep_id)
+    if not p.exists():
+        return None
+    try:
+        raw = p.read_bytes()
+        # Progress lines use \r for in-place terminal update; split on both CR and LF
+        for part in reversed(re.split(rb"[\r\n]", raw)):
+            m = re.search(rb"(\d+\.?\d*)%", part)
+            if m:
+                return float(m.group(1))
+    except Exception:
+        pass
+    return None
+
+
 @app.post("/api/download/{ep_id}")
 def download_episode(ep_id: str):
     if ep_id in _download_jobs and _download_jobs[ep_id].poll() is None:
@@ -172,14 +189,14 @@ def download_status(ep_id: str):
     if proc is not None:
         rc = proc.poll()
         if rc is None:
-            return {"status": "downloading"}
+            return {"status": "downloading", "progress": _parse_download_progress(ep_id)}
         if rc == 0 and audio_file.exists():
-            return {"status": "done"}
-        return {"status": "error", "log": _tail_log(ep_id)}
+            return {"status": "done", "progress": 100}
+        return {"status": "error", "log": _tail_log(ep_id), "progress": None}
 
     if audio_file.exists():
-        return {"status": "done"}
-    return {"status": "idle"}
+        return {"status": "done", "progress": 100}
+    return {"status": "idle", "progress": None}
 
 
 @app.get("/api/download/log/{ep_id}")
