@@ -295,6 +295,76 @@
   .ep-loading, .ep-error { padding: 20px; text-align: center; color: #666; font-size: 14px; }
   .ep-error { color: #df6f6f; }
 
+  /* ── Batch download ── */
+  #batch-panel {
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    display: none;
+  }
+  #batch-panel.visible { display: block; }
+  #batch-panel h3 { font-size: 13px; font-weight: 600; color: #888; margin-bottom: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+  #batch-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .batch-label { font-size: 13px; color: #888; white-space: nowrap; }
+  .batch-num {
+    width: 60px;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 5px 8px;
+    font-size: 13px;
+    outline: none;
+    text-align: center;
+  }
+  .batch-num:focus { border-color: #fb7299; }
+  #batch-model {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 5px 8px;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+  }
+  #batch-start-btn {
+    background: #fb7299;
+    color: #111;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #batch-start-btn:hover:not(:disabled) { background: #fc8aab; }
+  #batch-start-btn:disabled { opacity: 0.5; cursor: default; }
+  #batch-progress {
+    margin-top: 10px;
+    display: none;
+  }
+  #batch-progress.visible { display: block; }
+  #batch-bar-wrap {
+    height: 6px;
+    background: #2a2a2a;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  #batch-bar {
+    height: 100%;
+    background: #fb7299;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+    width: 0%;
+  }
+  #batch-status-text { font-size: 12px; color: #888; }
+  #batch-status-text .hi { color: #fb7299; }
+
   .ep-log {
     font-size: 11px;
     font-family: "Consolas", "Courier New", monospace;
@@ -333,6 +403,28 @@
     <input id="ep-input" type="text" placeholder="Paste a Bilibili episode URL or episode ID..." autocomplete="off">
     <button id="ep-load-btn">Load Season</button>
   </div>
+
+  <div id="batch-panel">
+    <h3>Bulk Download &amp; Transcribe</h3>
+    <div id="batch-controls">
+      <span class="batch-label">Episodes</span>
+      <input class="batch-num" id="batch-from" type="number" min="1" value="1" placeholder="From">
+      <span class="batch-label">to</span>
+      <input class="batch-num" id="batch-to" type="number" min="1" placeholder="To">
+      <span class="batch-label">Model</span>
+      <select id="batch-model">
+        <option value="large-v3">large-v3 (best)</option>
+        <option value="medium">medium</option>
+        <option value="small">small (fastest)</option>
+      </select>
+      <button id="batch-start-btn">Start</button>
+    </div>
+    <div id="batch-progress">
+      <div id="batch-bar-wrap"><div id="batch-bar"></div></div>
+      <div id="batch-status-text"></div>
+    </div>
+  </div>
+
   <div id="ep-list"></div>
 </div>
 
@@ -512,6 +604,7 @@
       epList.appendChild(row);
       if (!ep.is_downloaded) startPolling(ep.ep_id);
     });
+    showBatchPanel(episodes);
   }
 
   function setEpRowContent(row, ep) {
@@ -621,6 +714,125 @@
     } catch(err) {
       if (btn) { btn.disabled = false; btn.textContent = 'Study'; }
       alert('Failed to load episode: ' + err);
+    }
+  }
+
+  // ── Batch download + transcribe ───────────────────────────────────────
+  const batchPanel     = document.getElementById('batch-panel');
+  const batchFrom      = document.getElementById('batch-from');
+  const batchTo        = document.getElementById('batch-to');
+  const batchModel     = document.getElementById('batch-model');
+  const batchStartBtn  = document.getElementById('batch-start-btn');
+  const batchProgress  = document.getElementById('batch-progress');
+  const batchBar       = document.getElementById('batch-bar');
+  const batchStatusTxt = document.getElementById('batch-status-text');
+
+  let batchPollTimer = null;
+  let loadedEpisodes = [];   // set by renderEpisodeList
+
+  function showBatchPanel(episodes) {
+    loadedEpisodes = episodes;
+    batchTo.value  = episodes.length;
+    batchFrom.max  = episodes.length;
+    batchTo.max    = episodes.length;
+    batchPanel.classList.add('visible');
+    checkExistingBatch();
+  }
+
+  async function checkExistingBatch() {
+    try {
+      const s = await fetch('/api/batch/status').then(r => r.json());
+      if (s.running || s.phase === 'done' || s.phase === 'error') {
+        applyBatchStatus(s);
+        if (s.running) startBatchPolling();
+      }
+    } catch {}
+  }
+
+  batchStartBtn.addEventListener('click', async () => {
+    const from = parseInt(batchFrom.value);
+    const to   = parseInt(batchTo.value);
+    if (isNaN(from) || isNaN(to) || from < 1 || to < from || to > loadedEpisodes.length) {
+      batchStatusTxt.innerHTML = '<span style="color:#df6f6f">Invalid range.</span>';
+      batchProgress.classList.add('visible');
+      return;
+    }
+
+    const ep_ids = loadedEpisodes.slice(from - 1, to).map(ep => ep.ep_id);
+    const model  = batchModel.value;
+
+    batchStartBtn.disabled = true;
+    try {
+      const resp = await fetch('/api/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ep_ids, model }),
+      });
+      if (!resp.ok) {
+        const { detail } = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+        batchStatusTxt.innerHTML = `<span style="color:#df6f6f">${detail}</span>`;
+        batchProgress.classList.add('visible');
+        batchStartBtn.disabled = false;
+        return;
+      }
+    } catch(e) {
+      batchStartBtn.disabled = false;
+      return;
+    }
+
+    batchProgress.classList.add('visible');
+    startBatchPolling();
+  });
+
+  function startBatchPolling() {
+    if (batchPollTimer) return;
+    batchPollTimer = setInterval(async () => {
+      try {
+        const s = await fetch('/api/batch/status').then(r => r.json());
+        applyBatchStatus(s);
+        if (!s.running) {
+          clearInterval(batchPollTimer);
+          batchPollTimer = null;
+          batchStartBtn.disabled = false;
+          refreshEpisodeStatuses();
+        }
+      } catch {}
+    }, 2000);
+  }
+
+  function applyBatchStatus(s) {
+    batchProgress.classList.add('visible');
+    const pct = s.total > 0 ? Math.round((s.done_count / s.total) * 100) : 0;
+    batchBar.style.width = pct + '%';
+
+    if (s.phase === 'error') {
+      batchStatusTxt.innerHTML = `<span style="color:#df6f6f">Error: ${s.error}</span>`;
+    } else if (s.phase === 'done') {
+      batchBar.style.width = '100%';
+      batchStatusTxt.innerHTML = `<span class="hi">Done</span> — ${s.done_count} episode${s.done_count !== 1 ? 's' : ''} downloaded &amp; transcribed.`;
+    } else if (s.phase === 'downloading') {
+      batchStatusTxt.innerHTML = `<span class="hi">Downloading</span> ep ${s.current} &nbsp;·&nbsp; ${s.done_count} / ${s.total} done`;
+    } else if (s.phase === 'transcribing') {
+      batchStatusTxt.innerHTML = `<span class="hi">Transcribing</span> ep ${s.current} &nbsp;·&nbsp; ${s.done_count} / ${s.total} done`;
+    } else if (s.running) {
+      batchStatusTxt.innerHTML = `Starting… ${s.done_count} / ${s.total} done`;
+    }
+  }
+
+  async function refreshEpisodeStatuses() {
+    for (const ep of loadedEpisodes) {
+      const row = document.getElementById(`ep-row-${ep.ep_id}`);
+      if (!row) continue;
+      try {
+        const { status } = await fetch(`/api/download/status/${ep.ep_id}`).then(r => r.json());
+        if (status === 'done') {
+          const acts = row.querySelector('.ep-actions');
+          if (acts && !acts.querySelector('.study-btn')) {
+            acts.innerHTML = `<span class="ep-status ready">Ready</span><button class="ep-btn study-btn" data-ep="${ep.ep_id}">Study</button>`;
+            acts.querySelector('.study-btn').addEventListener('click', () => studyEpisode(ep.ep_id, row));
+          }
+        }
+      } catch {}
     }
   }
 

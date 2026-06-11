@@ -24,6 +24,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 import bilibili_api
 import dictionary
@@ -40,6 +41,18 @@ _segments:      list[dict] = []
 _audio_path:    Path | None = None
 _download_jobs: dict[str, subprocess.Popen] = {}
 _season_cache:  list[dict] = []
+
+# Batch download+transcribe state
+_batch: dict = {
+    "running":     False,
+    "ep_ids":      [],
+    "done":        [],
+    "current":     None,   # current ep_id being processed
+    "phase":       None,   # "downloading" | "transcribing" | "done" | "error"
+    "error":       None,
+    "model":       "large-v3",
+}
+_batch_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +183,102 @@ def download_status(ep_id: str):
 @app.get("/api/download/log/{ep_id}")
 def download_log(ep_id: str):
     return {"log": _tail_log(ep_id)}
+
+
+# ---------------------------------------------------------------------------
+# Batch download + transcribe
+# ---------------------------------------------------------------------------
+
+class BatchRequest(BaseModel):
+    ep_ids: list[str]
+    model:  str = "large-v3"
+
+
+def _run_batch(ep_ids: list[str], model: str) -> None:
+    """Background thread: download then transcribe each episode in sequence."""
+    try:
+        for ep_id in ep_ids:
+            _batch["current"] = ep_id
+            audio_file = BASE_DIR / "output" / f"ep{ep_id}_audio.m4a"
+
+            # ── Download ──────────────────────────────────────────────────
+            if not audio_file.exists():
+                _batch["phase"] = "downloading"
+                log_f = open(_log_path(ep_id), "w", encoding="utf-8")
+                proc  = subprocess.Popen(
+                    [sys.executable, str(BASE_DIR / "extract_audio.py"), ep_id],
+                    cwd=BASE_DIR,
+                    stdout=log_f,
+                    stderr=subprocess.STDOUT,
+                )
+                proc.wait()
+                log_f.close()
+                if proc.returncode != 0 or not audio_file.exists():
+                    _batch["phase"] = "error"
+                    _batch["error"] = f"Download failed for ep {ep_id} — see logs/ep{ep_id}_download.log"
+                    _batch["running"] = False
+                    return
+
+            # ── Transcribe ────────────────────────────────────────────────
+            cache_file = BASE_DIR / "cache" / f"ep{ep_id}_audio.json"
+            if not cache_file.exists():
+                _batch["phase"] = "transcribing"
+                transcribe.get_segments(audio_file, model_size=model)
+
+            _batch["done"].append(ep_id)
+
+        _batch["phase"]   = "done"
+        _batch["current"] = None
+        _batch["running"] = False
+
+    except Exception as exc:
+        _batch["phase"]   = "error"
+        _batch["error"]   = str(exc)
+        _batch["running"] = False
+
+
+@app.post("/api/batch")
+def start_batch(req: BatchRequest):
+    with _batch_lock:
+        if _batch["running"]:
+            raise HTTPException(status_code=409, detail="A batch job is already running.")
+
+        cookies_path = _find_downloader_cookies()
+        if not cookies_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Downloader cookies not found. "
+                    "Run setup_downloader_profile.py first."
+                ),
+            )
+
+        _batch.update({
+            "running": True,
+            "ep_ids":  req.ep_ids,
+            "done":    [],
+            "current": None,
+            "phase":   None,
+            "error":   None,
+            "model":   req.model,
+        })
+
+    threading.Thread(target=_run_batch, args=(req.ep_ids, req.model), daemon=True).start()
+    return {"status": "started", "count": len(req.ep_ids)}
+
+
+@app.get("/api/batch/status")
+def batch_status():
+    return {
+        "running":    _batch["running"],
+        "total":      len(_batch["ep_ids"]),
+        "done_count": len(_batch["done"]),
+        "done":       list(_batch["done"]),
+        "current":    _batch["current"],
+        "phase":      _batch["phase"],
+        "error":      _batch["error"],
+        "model":      _batch["model"],
+    }
 
 
 @app.post("/api/switch/{ep_id}")
