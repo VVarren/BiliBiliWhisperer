@@ -110,6 +110,8 @@ python app.py output/ep691461_audio.m4a
 3. Click **Download** — the audio downloads in the background. Your main Brave window stays open.
 4. Once the status changes to **Ready**, click **Study** to load the transcript and begin.
 
+Previously loaded seasons are saved automatically. On reload, season name chips appear below the input — click one to jump straight back to that season without re-pasting the URL.
+
 ### Model size
 
 By default the app uses Whisper `large-v3`. On first run it downloads the model (~3 GB) and transcribes the episode — about 5–8 minutes on an RTX 4090 for a 30-minute episode. All subsequent runs load instantly from cache.
@@ -169,6 +171,7 @@ The downloader Brave profile opens in a new window, fetches the audio stream, do
 │  [中文学习]  [Episodes]                                   │
 ├─────────────────────────────────────────────────────────┤
 │  [paste episode URL or ID ________________] [Load Season]│
+│  [间谍过家家 第一季]  [Re:Zero 第二季]  ← recent seasons │
 │                                                         │
 │  Ep 1  间谍过家家 第1话   ✓ Ready          [Study]       │
 │  Ep 2  间谍过家家 第2话   ↓ Downloading…                 │

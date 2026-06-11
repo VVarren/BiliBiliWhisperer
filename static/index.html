@@ -276,6 +276,7 @@
   .ep-status.downloading { background: #2a2a0a; color: #dfdf4f; }
   .ep-status.idle { background: #2a2a2a; color: #666; }
   .ep-status.error { background: #3a1a1a; color: #df6f6f; }
+  .ep-status.queued { background: #1a2030; color: #6699cc; }
 
   .ep-btn {
     border: none;
@@ -379,6 +380,31 @@
     max-height: 180px;
     overflow-y: auto;
   }
+
+  /* ── Season history ── */
+  #ep-history {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  #ep-history:empty { display: none; }
+  .ep-hist-chip {
+    background: #1e1e2e;
+    border: 1px solid #3a3a4a;
+    border-radius: 14px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: #aaa;
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: border-color 0.15s, color 0.15s;
+    user-select: none;
+  }
+  .ep-hist-chip:hover { border-color: #fb7299; color: #fb7299; }
 </style>
 </head>
 <body>
@@ -403,6 +429,8 @@
     <input id="ep-input" type="text" placeholder="Paste a Bilibili episode URL or episode ID..." autocomplete="off">
     <button id="ep-load-btn">Load Season</button>
   </div>
+
+  <div id="ep-history"></div>
 
   <div id="batch-panel">
     <h3>Bulk Download &amp; Transcribe</h3>
@@ -568,13 +596,47 @@
   }
 
   // ── Episode browser ────────────────────────────────────────────────────
-  const epInput   = document.getElementById('ep-input');
-  const epLoadBtn = document.getElementById('ep-load-btn');
-  const epList    = document.getElementById('ep-list');
+  const epInput    = document.getElementById('ep-input');
+  const epLoadBtn  = document.getElementById('ep-load-btn');
+  const epList     = document.getElementById('ep-list');
+  const epHistory  = document.getElementById('ep-history');
   const pollTimers = {};
 
   epLoadBtn.addEventListener('click', loadSeason);
   epInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadSeason(); });
+
+  // ── Season history (localStorage) ─────────────────────────────────────
+  const HISTORY_KEY = 'bilibili_season_history';
+
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+    catch { return []; }
+  }
+
+  function saveToHistory(input, ep_id, title) {
+    const history = loadHistory().filter(h => h.ep_id !== ep_id);
+    history.unshift({ input, ep_id, title: title || input, timestamp: Date.now() });
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 10)));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const history = loadHistory();
+    epHistory.innerHTML = '';
+    history.forEach(item => {
+      const chip = document.createElement('button');
+      chip.className = 'ep-hist-chip';
+      chip.textContent = item.title || item.input;
+      chip.title = item.input;
+      chip.addEventListener('click', () => {
+        epInput.value = item.input;
+        loadSeason();
+      });
+      epHistory.appendChild(chip);
+    });
+  }
+
+  renderHistory();
 
   async function loadSeason() {
     const raw = epInput.value.trim();
@@ -584,10 +646,13 @@
 
     epList.innerHTML = '<div class="ep-loading">Loading season...</div>';
     try {
-      const episodes = await fetch(`/api/season?ep_id=${encodeURIComponent(ep_id)}`).then(r => {
+      const data = await fetch(`/api/season?ep_id=${encodeURIComponent(ep_id)}`).then(r => {
         if (!r.ok) return r.json().then(d => Promise.reject(d.detail || 'API error'));
         return r.json();
       });
+      const episodes = Array.isArray(data) ? data : (data.episodes || []);
+      const title    = Array.isArray(data) ? '' : (data.title || '');
+      saveToHistory(raw, ep_id, title);
       renderEpisodeList(episodes);
     } catch(err) {
       epList.innerHTML = `<div class="ep-error">Error: ${err}</div>`;
@@ -816,6 +881,24 @@
       batchStatusTxt.innerHTML = `<span class="hi">Transcribing</span> ep ${s.current} &nbsp;·&nbsp; ${s.done_count} / ${s.total} done`;
     } else if (s.running) {
       batchStatusTxt.innerHTML = `Starting… ${s.done_count} / ${s.total} done`;
+    }
+
+    // Update individual episode rows
+    if (s.running && Array.isArray(s.ep_ids)) {
+      const doneSet = new Set(s.done || []);
+      s.ep_ids.forEach(ep_id => {
+        if (doneSet.has(ep_id)) return;
+        const row = document.getElementById(`ep-row-${ep_id}`);
+        if (!row) return;
+        const acts = row.querySelector('.ep-actions');
+        if (!acts) return;
+        if (ep_id === s.current) {
+          const label = s.phase === 'transcribing' ? 'Transcribing...' : 'In Progress...';
+          acts.innerHTML = `<span class="ep-status downloading">${label}</span>`;
+        } else {
+          acts.innerHTML = '<span class="ep-status queued">Queued</span>';
+        }
+      });
     }
   }
 

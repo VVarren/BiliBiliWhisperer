@@ -93,9 +93,11 @@ def search(q: str = Query(..., min_length=1)):
 def season(ep_id: str = Query(...)):
     global _season_cache
     try:
-        _season_cache = bilibili_api.get_season_episodes(ep_id)
+        info = bilibili_api.get_season_episodes(ep_id)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+    _season_cache = info["episodes"]
 
     # Annotate each episode with its local download/transcription status
     output_dir = BASE_DIR / "output"
@@ -106,7 +108,7 @@ def season(ep_id: str = Query(...)):
         cache_file  = cache_dir  / f"ep{eid}_audio.json"
         ep["is_downloaded"]  = audio_file.exists()
         ep["is_transcribed"] = cache_file.exists()
-    return _season_cache
+    return {"title": info["title"], "episodes": _season_cache}
 
 
 LOGS_DIR = BASE_DIR / "logs"

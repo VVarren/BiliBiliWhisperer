@@ -48,10 +48,11 @@ def parse_ep_id(text: str) -> str | None:
     return None
 
 
-def get_season_episodes(ep_id: str) -> list[dict]:
+def get_season_episodes(ep_id: str) -> dict:
     """
     Fetch all episodes for the season that contains ep_id.
-    Returns list of dicts: {ep_id, title, long_title, duration_s, cover}.
+    Returns {"title": str, "episodes": list[dict]}.
+    Episodes: {ep_id, title, long_title, duration_s, cover}.
     """
     url = f"https://api.bilibili.com/pgc/view/web/season?ep_id={ep_id}"
     resp = _session().get(url, timeout=15)
@@ -64,6 +65,10 @@ def get_season_episodes(ep_id: str) -> list[dict]:
         raise RuntimeError(f"Bilibili season API error {code}: {msg}")
 
     result = data.get("result", {})
+    show_title   = result.get("title", "")
+    season_title = result.get("season_title", "")
+    display_title = f"{show_title} {season_title}".strip() if season_title else show_title
+
     raw_eps = result.get("episodes", [])
     if not raw_eps:
         raise RuntimeError("Season API returned no episodes.")
@@ -77,4 +82,4 @@ def get_season_episodes(ep_id: str) -> list[dict]:
             "duration_s": ep.get("duration", 0) // 1000,
             "cover":      ep.get("cover", ""),
         })
-    return episodes
+    return {"title": display_title, "episodes": episodes}
