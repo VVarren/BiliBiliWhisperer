@@ -8,7 +8,8 @@ Built for Chinese-dubbed anime that have no CC subtitle tracks (e.g. 间谍过�
 
 ## Features
 
-- **Episode browser** — Paste any Bilibili episode URL, get the full season list, and download episodes in the background without closing your main browser
+- **Episode browser** — Paste any Bilibili episode URL, get the full season list, and download episodes in the background without closing your main browser; previously loaded seasons are saved as one-click chips
+- **Bulk download & transcribe** — Queue a range of episodes (e.g. Ep 1–25) in one click; each episode downloads then transcribes sequentially with a live progress bar and per-row status (Queued → In Progress → Transcribing → Ready)
 - **Audio extraction** — Downloads the audio track from any Bilibili bangumi episode, bypassing region locks via your Brave browser extensions (Unblock Youku / Unblock Boundary)
 - **AI transcription** — Transcribes Chinese audio with OpenAI Whisper (`large-v3`) running on your GPU
 - **English translation** — Automatically translates every sentence to English (contextual, via Whisper's translation mode)
@@ -107,10 +108,29 @@ python app.py output/ep691461_audio.m4a
 
 1. In the **Episodes** tab, paste any Bilibili bangumi URL or episode ID into the input and click **Load Season**.
 2. The full season episode list appears. Episodes already downloaded show a **Study** button; others show **Download**.
-3. Click **Download** — the audio downloads in the background. Your main Brave window stays open.
+3. Click **Download** on an individual episode — it downloads in the background. Your main Brave window stays open.
 4. Once the status changes to **Ready**, click **Study** to load the transcript and begin.
 
-Previously loaded seasons are saved automatically. On reload, season name chips appear below the input — click one to jump straight back to that season without re-pasting the URL.
+Previously loaded seasons are saved automatically. Season name chips appear below the input on reload — click one to jump straight back without re-pasting the URL.
+
+### Bulk download & transcribe
+
+To download and transcribe a range of episodes in one go, use the **Bulk Download & Transcribe** panel below the episode list:
+
+1. Set the **From** and **To** episode numbers (1-based index in the loaded season).
+2. Choose a Whisper model size.
+3. Click **Start** — episodes process sequentially: download first, then transcribe.
+
+While the batch runs, each episode row updates in real time:
+
+| Status | Meaning |
+|--------|---------|
+| **Queued** (blue) | Waiting in the batch queue |
+| **In Progress...** (yellow) | Downloading audio |
+| **Transcribing...** (yellow) | Running Whisper |
+| **Ready** (green) | Done — Study button appears |
+
+Episodes already downloaded skip straight to transcription. The progress bar and status text in the panel show overall progress.
 
 ### Model size
 
@@ -173,9 +193,16 @@ The downloader Brave profile opens in a new window, fetches the audio stream, do
 │  [paste episode URL or ID ________________] [Load Season]│
 │  [间谍过家家 第一季]  [Re:Zero 第二季]  ← recent seasons │
 │                                                         │
-│  Ep 1  间谍过家家 第1话   ✓ Ready          [Study]       │
-│  Ep 2  间谍过家家 第2话   ↓ Downloading…                 │
-│  Ep 3  间谍过家家 第3话   – Not downloaded  [Download]   │
+│  ┌ Bulk Download & Transcribe ──────────────────────┐   │
+│  │ Episodes [1] to [25]  Model [large-v3]  [Start]  │   │
+│  │ ████████████░░░░░░░  Transcribing ep 8 · 7/25    │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                         │
+│  Ep 1   间谍过家家 第1话   ✓ Ready        [Study]        │
+│  Ep 7   间谍过家家 第7话   ✓ Ready        [Study]        │
+│  Ep 8   间谍过家家 第8话   Transcribing…                 │
+│  Ep 9   间谍过家家 第9话   Queued                        │
+│  Ep 10  间谍过家家 第10话  – Not downloaded  [Download]  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -209,7 +236,10 @@ bilibili-audio-extractor/
 Bilibili locks bangumi content by region. Your Brave extensions (Unblock Youku / Unblock Boundary) handle the unblocking — but only for browser-originated requests. `extract_audio.py` launches a **dedicated Brave profile** (separate data directory) via Playwright, calls the Bilibili DASH playurl API from inside the browser page (`page.evaluate`), gets a signed CDN URL, then downloads the audio with Python. Because the downloader uses its own data directory, your main Brave window is never touched.
 
 ### Episode browser
-`bilibili_api.py` calls the Bilibili public season API to fetch episode metadata (titles, durations, ep_ids). This endpoint is not region-locked, so it works via plain Python requests with your main Brave cookies. The app spawns `extract_audio.py` as a background subprocess for each requested download, writes its output to `logs/ep{id}_download.log`, and polls the file system for status. If a download fails, the last 20 lines of the log are shown directly below the episode row in the UI.
+`bilibili_api.py` calls the Bilibili public season API to fetch episode metadata (titles, durations, ep_ids). This endpoint is not region-locked, so it works via plain Python requests with your main Brave cookies. The app spawns `extract_audio.py` as a background subprocess for each requested download, writes its output to `logs/ep{id}_download.log`, and polls the file system for status. If a download fails, the last 20 lines of the log are shown directly below the episode row in the UI. Previously loaded season URLs are persisted in the browser's `localStorage` so they survive page reloads.
+
+### Bulk download
+The batch endpoint (`POST /api/batch`) accepts a list of ep_ids and runs `_run_batch()` in a background thread. Episodes are processed sequentially — download then transcribe — to avoid `SingletonLock` conflicts between Brave instances and GPU contention during Whisper. The frontend polls `/api/batch/status` every 2 seconds and updates each episode row in real time (Queued → In Progress → Transcribing → Ready).
 
 ### Transcription
 `transcribe.py` runs two Whisper passes on the `.m4a` file:
