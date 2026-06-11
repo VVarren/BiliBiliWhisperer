@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Downloaded audio files
+output/
+
+# Whisper transcription cache
+cache/
+
+# Download logs
+logs/
+
+# CC-CEDICT dictionary (downloaded on first run)
+data/
+
+# Cookies — never commit credentials
+cookies.txt
+cookies_dl.txt
+
+# Whisper model weights (downloaded by faster-whisper)
+models/
+
+# OS
+.DS_Store
+Thumbs.db

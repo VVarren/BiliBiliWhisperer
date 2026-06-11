@@ -1,0 +1,15 @@
+# Bilibili audio extraction
+playwright
+requests
+yt-dlp
+
+# Chinese learning app
+fastapi
+uvicorn[standard]
+faster-whisper
+jieba
+aiofiles
+
+# Install separately (not plain PyPI):
+#   ffmpeg:  winget install Gyan.FFmpeg
+#   torch:   pip install torch --index-url https://download.pytorch.org/whl/cpu

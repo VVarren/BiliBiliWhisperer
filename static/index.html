@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bilibili Chinese Learner</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Top bar ── */
+  #topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #2a2a2a;
+    flex-shrink: 0;
+  }
+  #topbar h1 { font-size: 15px; font-weight: 600; color: #fb7299; white-space: nowrap; }
+  #search {
+    flex: 1;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 6px 12px;
+    font-size: 14px;
+    outline: none;
+  }
+  #search:focus { border-color: #fb7299; }
+  #search-count { font-size: 12px; color: #888; white-space: nowrap; }
+
+  /* ── Sentence list ── */
+  #sentence-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  #sentence-list::-webkit-scrollbar { width: 6px; }
+  #sentence-list::-webkit-scrollbar-track { background: #1a1a1a; }
+  #sentence-list::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+
+  .segment {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 16px;
+    cursor: default;
+    transition: background 0.1s;
+    border-left: 3px solid transparent;
+  }
+  .segment:hover { background: #1e1e1e; }
+  .segment.active {
+    background: #1e1e2e;
+    border-left-color: #fb7299;
+  }
+  .segment.search-match { background: #1e2a1e; }
+  .segment.hidden { display: none; }
+
+  .ts {
+    font-size: 11px;
+    color: #555;
+    white-space: nowrap;
+    cursor: pointer;
+    min-width: 38px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ts:hover { color: #fb7299; }
+
+  .seg-text-wrap { flex: 1; }
+  .text { font-size: 18px; line-height: 1.6; }
+  .word {
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 0 2px;
+    transition: background 0.1s;
+  }
+  .word:hover { background: #fb729933; color: #fff; }
+  .translation { font-size: 13px; color: #666; line-height: 1.4; margin-top: 2px; font-style: italic; }
+  .segment.active .translation { color: #999; }
+
+  /* ── Audio player ── */
+  #player {
+    background: #1a1a1a;
+    border-top: 1px solid #2a2a2a;
+    padding: 10px 16px;
+    flex-shrink: 0;
+  }
+  #player-inner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .ctrl-btn {
+    background: none;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    line-height: 1;
+  }
+  .ctrl-btn:hover { color: #fb7299; background: #2a2a2a; }
+  #play-btn { font-size: 22px; }
+
+  #progress-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #progress {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: #3a3a3a;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  #progress::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    background: #fb7299;
+    border-radius: 50%;
+  }
+  #time-display { font-size: 12px; color: #888; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  #volume-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #vol-icon { font-size: 14px; color: #888; cursor: pointer; user-select: none; }
+  #vol-icon:hover { color: #ccc; }
+  #volume {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 72px;
+    height: 4px;
+    background: #3a3a3a;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  #volume::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    background: #fb7299;
+    border-radius: 50%;
+  }
+
+  /* ── Dictionary popup ── */
+  #popup {
+    position: fixed;
+    background: #1e1e2e;
+    border: 1px solid #3a3a4a;
+    border-radius: 10px;
+    padding: 16px;
+    min-width: 220px;
+    max-width: 300px;
+    box-shadow: 0 8px 32px #00000088;
+    z-index: 1000;
+    display: none;
+  }
+  #popup.visible { display: block; }
+  #popup-word { font-size: 28px; margin-bottom: 4px; }
+  #popup-pinyin { font-size: 14px; color: #fb7299; margin-bottom: 8px; }
+  #popup-defs { font-size: 13px; color: #ccc; line-height: 1.6; max-height: 140px; overflow-y: auto; }
+  #popup-defs li { margin-left: 16px; }
+  #popup-close {
+    position: absolute; top: 8px; right: 10px;
+    background: none; border: none; color: #666; cursor: pointer; font-size: 16px;
+  }
+  #popup-close:hover { color: #ccc; }
+  #popup-not-found { font-size: 13px; color: #888; font-style: italic; }
+
+  #loading {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; color: #555; font-size: 15px;
+  }
+
+  /* ── Tabs ── */
+  #tabs { display: flex; gap: 2px; flex-shrink: 0; }
+  .tab-btn {
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    transition: color 0.15s, background 0.15s;
+  }
+  .tab-btn:hover { color: #ccc; background: #2a2a2a; }
+  .tab-btn.active { color: #fb7299; background: #2a1a22; }
+
+  /* ── Episode browser ── */
+  #episode-view {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: none;
+  }
+  #ep-input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  #ep-input {
+    flex: 1;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    font-size: 14px;
+    outline: none;
+  }
+  #ep-input:focus { border-color: #fb7299; }
+  #ep-load-btn {
+    background: #fb7299;
+    color: #111;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #ep-load-btn:hover { background: #fc8aab; }
+
+  .ep-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    gap: 12px;
+  }
+  .ep-row:hover { border-color: #3a3a3a; }
+  .ep-info { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
+  .ep-num { font-size: 12px; color: #fb7299; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ep-title { font-size: 14px; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ep-dur { font-size: 12px; color: #555; white-space: nowrap; }
+  .ep-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+  .ep-status {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+  .ep-status.ready { background: #1a3a1a; color: #6fdf6f; }
+  .ep-status.downloading { background: #2a2a0a; color: #dfdf4f; }
+  .ep-status.idle { background: #2a2a2a; color: #666; }
+  .ep-status.error { background: #3a1a1a; color: #df6f6f; }
+
+  .ep-btn {
+    border: none;
+    border-radius: 6px;
+    padding: 5px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .ep-btn:disabled { opacity: 0.5; cursor: default; }
+  .study-btn { background: #fb7299; color: #111; }
+  .study-btn:hover:not(:disabled) { background: #fc8aab; }
+  .download-btn { background: #2a3a4a; color: #9ac; border: 1px solid #3a4a5a; }
+  .download-btn:hover:not(:disabled) { background: #3a4a5a; }
+
+  .ep-loading, .ep-error { padding: 20px; text-align: center; color: #666; font-size: 14px; }
+  .ep-error { color: #df6f6f; }
+
+  .ep-log {
+    font-size: 11px;
+    font-family: "Consolas", "Courier New", monospace;
+    color: #df9f6f;
+    background: #1a1010;
+    border: 1px solid #3a2020;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 0 0 6px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="tabs">
+    <button class="tab-btn active" id="tab-study">中文学习</button>
+    <button class="tab-btn" id="tab-episodes">Episodes</button>
+  </div>
+  <input id="search" type="text" placeholder="搜索... (search sentences)" autocomplete="off">
+  <span id="search-count"></span>
+</div>
+
+<div id="study-view" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+  <div id="sentence-list">
+    <div id="loading">Loading transcript...</div>
+  </div>
+</div>
+
+<div id="episode-view">
+  <div id="ep-input-row">
+    <input id="ep-input" type="text" placeholder="Paste a Bilibili episode URL or episode ID..." autocomplete="off">
+    <button id="ep-load-btn">Load Season</button>
+  </div>
+  <div id="ep-list"></div>
+</div>
+
+<div id="player">
+  <div id="player-inner">
+    <button class="ctrl-btn" id="back-btn" title="Back 5s">⏮</button>
+    <button class="ctrl-btn" id="play-btn" title="Play/Pause">▶</button>
+    <button class="ctrl-btn" id="fwd-btn" title="Forward 5s">⏭</button>
+    <div id="progress-wrap">
+      <input id="progress" type="range" min="0" max="100" step="0.1" value="0">
+      <span id="time-display">0:00 / 0:00</span>
+    </div>
+    <div id="volume-wrap">
+      <span id="vol-icon" title="Mute/unmute">🔊</span>
+      <input id="volume" type="range" min="0" max="1" step="0.02" value="1">
+    </div>
+  </div>
+  <audio id="audio" src="/audio" preload="metadata"></audio>
+</div>
+
+<!-- Dictionary popup -->
+<div id="popup">
+  <button id="popup-close">✕</button>
+  <div id="popup-word"></div>
+  <div id="popup-pinyin"></div>
+  <div id="popup-defs"></div>
+  <div id="popup-not-found"></div>
+</div>
+
+<script>
+(async () => {
+  const audio       = document.getElementById('audio');
+  const playBtn     = document.getElementById('play-btn');
+  const backBtn     = document.getElementById('back-btn');
+  const fwdBtn      = document.getElementById('fwd-btn');
+  const progress    = document.getElementById('progress');
+  const timeDisplay = document.getElementById('time-display');
+  const volSlider   = document.getElementById('volume');
+  const volIcon     = document.getElementById('vol-icon');
+  const list        = document.getElementById('sentence-list');
+  const searchInput = document.getElementById('search');
+  const searchCount = document.getElementById('search-count');
+  const popup       = document.getElementById('popup');
+  const popupWord   = document.getElementById('popup-word');
+  const popupPinyin = document.getElementById('popup-pinyin');
+  const popupDefs   = document.getElementById('popup-defs');
+  const popupNF     = document.getElementById('popup-not-found');
+  const popupClose  = document.getElementById('popup-close');
+
+  function closePopup() { popup.classList.remove('visible'); }
+
+  // ── Tab switching ──────────────────────────────────────────────────────
+  const studyView   = document.getElementById('study-view');
+  const episodeView = document.getElementById('episode-view');
+  const tabStudy    = document.getElementById('tab-study');
+  const tabEpisodes = document.getElementById('tab-episodes');
+
+  function switchTab(tab) {
+    const isEp = tab === 'episodes';
+    studyView.style.display   = isEp ? 'none' : 'flex';
+    episodeView.style.display = isEp ? 'block' : 'none';
+    searchInput.style.display = isEp ? 'none' : '';
+    searchCount.style.display = isEp ? 'none' : '';
+    tabStudy.classList.toggle('active', !isEp);
+    tabEpisodes.classList.toggle('active', isEp);
+  }
+
+  tabStudy.addEventListener('click',   () => switchTab('study'));
+  tabEpisodes.addEventListener('click', () => switchTab('episodes'));
+
+  // Open episode browser if URL hash says so
+  if (location.hash === '#episodes') switchTab('episodes');
+
+  // ── Load segments ──────────────────────────────────────────────────────
+  let segments = [];
+  let segEls   = [];
+  let currentActive = -1;
+
+  const fmt = t => {
+    const m = Math.floor(t / 60), s = Math.floor(t % 60);
+    return `${m}:${s.toString().padStart(2,'0')}`;
+  };
+
+  function loadSegments(segs) {
+    segments      = segs;
+    segEls        = [];
+    currentActive = -1;
+    list.innerHTML = '';
+
+    if (!segs.length) {
+      list.innerHTML = '<div id="loading" style="color:#555">Select an episode to begin.</div>';
+      return;
+    }
+
+    segEls = segs.map((seg, idx) => {
+      const div = document.createElement('div');
+      div.className = 'segment';
+      div.dataset.start = seg.start;
+      div.dataset.end   = seg.end;
+      div.dataset.idx   = idx;
+
+      const ts = document.createElement('span');
+      ts.className = 'ts';
+      ts.textContent = fmt(seg.start);
+      ts.addEventListener('click', () => { audio.currentTime = seg.start; audio.play(); });
+
+      const wrap = document.createElement('div');
+      wrap.className = 'seg-text-wrap';
+
+      const text = document.createElement('div');
+      text.className = 'text';
+      (seg.words || []).forEach(w => {
+        const span = document.createElement('span');
+        span.className = 'word';
+        span.textContent = w.word;
+        span.dataset.word = w.word;
+        span.addEventListener('click', e => { e.stopPropagation(); showPopup(w.word, span); });
+        text.appendChild(span);
+      });
+      wrap.appendChild(text);
+
+      if (seg.translation) {
+        const tr = document.createElement('div');
+        tr.className = 'translation';
+        tr.textContent = seg.translation;
+        wrap.appendChild(tr);
+      }
+
+      div.appendChild(ts);
+      div.appendChild(wrap);
+      list.appendChild(div);
+      return div;
+    });
+  }
+
+  try {
+    const segs = await fetch('/api/segments').then(r => r.json());
+    loadSegments(segs);
+  } catch(e) {
+    list.innerHTML = '<div id="loading" style="color:#e55">Failed to load transcript.</div>';
+  }
+
+  // ── Episode browser ────────────────────────────────────────────────────
+  const epInput   = document.getElementById('ep-input');
+  const epLoadBtn = document.getElementById('ep-load-btn');
+  const epList    = document.getElementById('ep-list');
+  const pollTimers = {};
+
+  epLoadBtn.addEventListener('click', loadSeason);
+  epInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadSeason(); });
+
+  async function loadSeason() {
+    const raw = epInput.value.trim();
+    if (!raw) return;
+    const m = raw.match(/ep(\d+)/i) || raw.match(/^(\d+)$/);
+    const ep_id = m ? m[1] : raw;
+
+    epList.innerHTML = '<div class="ep-loading">Loading season...</div>';
+    try {
+      const episodes = await fetch(`/api/season?ep_id=${encodeURIComponent(ep_id)}`).then(r => {
+        if (!r.ok) return r.json().then(d => Promise.reject(d.detail || 'API error'));
+        return r.json();
+      });
+      renderEpisodeList(episodes);
+    } catch(err) {
+      epList.innerHTML = `<div class="ep-error">Error: ${err}</div>`;
+    }
+  }
+
+  function renderEpisodeList(episodes) {
+    epList.innerHTML = '';
+    episodes.forEach(ep => {
+      const row = document.createElement('div');
+      row.className = 'ep-row';
+      row.id = `ep-row-${ep.ep_id}`;
+      setEpRowContent(row, ep);
+      epList.appendChild(row);
+      if (!ep.is_downloaded) startPolling(ep.ep_id);
+    });
+  }
+
+  function setEpRowContent(row, ep) {
+    const title = ep.long_title || ep.title || `Ep ${ep.ep_id}`;
+    const mins  = Math.round(ep.duration_s / 60);
+    let statusHtml, actionHtml;
+
+    if (ep.is_downloaded) {
+      statusHtml = '<span class="ep-status ready">Ready</span>';
+      actionHtml = `<button class="ep-btn study-btn" data-ep="${ep.ep_id}">Study</button>`;
+    } else {
+      statusHtml = '<span class="ep-status idle">Not downloaded</span>';
+      actionHtml = `<button class="ep-btn download-btn" data-ep="${ep.ep_id}">Download</button>`;
+    }
+
+    row.innerHTML = `
+      <div class="ep-info">
+        <span class="ep-num">${ep.title}</span>
+        <span class="ep-title">${title}</span>
+        <span class="ep-dur">${mins}m</span>
+      </div>
+      <div class="ep-actions">${statusHtml}${actionHtml}</div>
+    `;
+
+    row.querySelector('.study-btn')?.addEventListener('click',    () => studyEpisode(ep.ep_id, row));
+    row.querySelector('.download-btn')?.addEventListener('click', () => downloadEpisode(ep.ep_id, row));
+  }
+
+  async function downloadEpisode(ep_id, row) {
+    const btn = row.querySelector('.download-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Starting...'; }
+
+    let resp;
+    try {
+      resp = await fetch(`/api/download/${ep_id}`, { method: 'POST' });
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+      return;
+    }
+
+    if (!resp.ok) {
+      const { detail } = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+      if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+      row.querySelector('.ep-log')?.remove();
+      const logEl = document.createElement('pre');
+      logEl.className = 'ep-log';
+      logEl.textContent = detail;
+      row.after(logEl);
+      return;
+    }
+
+    updateEpRowStatus(row, ep_id, 'downloading');
+    startPolling(ep_id);
+  }
+
+  function startPolling(ep_id) {
+    if (pollTimers[ep_id]) return;
+    pollTimers[ep_id] = setInterval(() => pollStatus(ep_id), 3000);
+  }
+
+  async function pollStatus(ep_id) {
+    try {
+      const data = await fetch(`/api/download/status/${ep_id}`).then(r => r.json());
+      if (data.status !== 'downloading') {
+        clearInterval(pollTimers[ep_id]);
+        delete pollTimers[ep_id];
+        const row = document.getElementById(`ep-row-${ep_id}`);
+        if (row) updateEpRowStatus(row, ep_id, data.status, data.log);
+      }
+    } catch {}
+  }
+
+  function updateEpRowStatus(row, ep_id, status, log) {
+    const acts = row.querySelector('.ep-actions');
+    if (!acts) return;
+    // Remove any existing log panel
+    row.querySelector('.ep-log')?.remove();
+
+    if (status === 'downloading') {
+      acts.innerHTML = '<span class="ep-status downloading">Downloading...</span>';
+    } else if (status === 'done') {
+      acts.innerHTML = `<span class="ep-status ready">Ready</span><button class="ep-btn study-btn" data-ep="${ep_id}">Study</button>`;
+      acts.querySelector('.study-btn').addEventListener('click', () => studyEpisode(ep_id, row));
+    } else if (status === 'error') {
+      acts.innerHTML = `<span class="ep-status error">Error</span><button class="ep-btn download-btn" data-ep="${ep_id}">Retry</button>`;
+      acts.querySelector('.download-btn').addEventListener('click', () => downloadEpisode(ep_id, row));
+      if (log) {
+        const logEl = document.createElement('pre');
+        logEl.className = 'ep-log';
+        logEl.textContent = log;
+        row.after(logEl);
+      }
+    }
+  }
+
+  async function studyEpisode(ep_id, row) {
+    const btn = row.querySelector('.study-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
+    try {
+      await fetch(`/api/switch/${ep_id}`, { method: 'POST' });
+      audio.src = `/audio?t=${Date.now()}`;
+      const segs = await fetch('/api/segments').then(r => r.json());
+      loadSegments(segs);
+      switchTab('study');
+      audio.load();
+      if (btn) { btn.disabled = false; btn.textContent = 'Study'; }
+    } catch(err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Study'; }
+      alert('Failed to load episode: ' + err);
+    }
+  }
+
+  // ── Audio sync ─────────────────────────────────────────────────────────
+  audio.addEventListener('timeupdate', () => {
+    const t = audio.currentTime;
+    if (audio.duration) {
+      progress.value = (t / audio.duration) * 100;
+      timeDisplay.textContent = `${fmt(t)} / ${fmt(audio.duration)}`;
+    }
+
+    let found = -1;
+    for (let i = 0; i < segments.length; i++) {
+      if (t >= segments[i].start && t < segments[i].end) { found = i; break; }
+    }
+    if (found !== currentActive) {
+      if (currentActive >= 0) segEls[currentActive].classList.remove('active');
+      if (found >= 0) {
+        segEls[found].classList.add('active');
+        segEls[found].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      currentActive = found;
+    }
+  });
+
+  audio.addEventListener('loadedmetadata', () => {
+    progress.max = 100;
+    timeDisplay.textContent = `0:00 / ${fmt(audio.duration)}`;
+  });
+
+  audio.addEventListener('play',  () => { playBtn.textContent = '⏸'; });
+  audio.addEventListener('pause', () => { playBtn.textContent = '▶'; });
+  audio.addEventListener('ended', () => { playBtn.textContent = '▶'; });
+
+  playBtn.addEventListener('click', () => { audio.paused ? audio.play() : audio.pause(); });
+  backBtn.addEventListener('click', () => { audio.currentTime = Math.max(0, audio.currentTime - 5); });
+  fwdBtn.addEventListener('click',  () => { audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 5); });
+
+  progress.addEventListener('input', () => {
+    if (audio.duration) audio.currentTime = (progress.value / 100) * audio.duration;
+  });
+
+  let prevVol = 1;
+  volSlider.addEventListener('input', () => {
+    audio.volume = parseFloat(volSlider.value);
+    audio.muted  = audio.volume === 0;
+    updateVolIcon();
+  });
+  volIcon.addEventListener('click', () => {
+    if (audio.muted || audio.volume === 0) {
+      audio.muted  = false;
+      audio.volume = prevVol || 0.8;
+      volSlider.value = audio.volume;
+    } else {
+      prevVol = audio.volume;
+      audio.muted = true;
+      volSlider.value = 0;
+    }
+    updateVolIcon();
+  });
+  function updateVolIcon() {
+    const v = audio.muted ? 0 : audio.volume;
+    volIcon.textContent = v === 0 ? '🔇' : v < 0.5 ? '🔉' : '🔊';
+  }
+
+  // ── Search ─────────────────────────────────────────────────────────────
+  let searchTimer = null;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(async () => {
+      const q = searchInput.value.trim();
+      if (!q) {
+        segEls.forEach(el => el.classList.remove('hidden', 'search-match'));
+        searchCount.textContent = '';
+        return;
+      }
+      let matches;
+      try {
+        matches = await fetch(`/api/search?q=${encodeURIComponent(q)}`).then(r => r.json());
+      } catch { return; }
+      const matchIds = new Set(matches.map(s => s.id));
+      let count = 0;
+      segEls.forEach((el, i) => {
+        if (matchIds.has(segments[i].id)) {
+          el.classList.remove('hidden');
+          el.classList.add('search-match');
+          count++;
+        } else {
+          el.classList.add('hidden');
+          el.classList.remove('search-match');
+        }
+      });
+      searchCount.textContent = count ? `${count} results` : 'No results';
+      if (count) {
+        const first = segEls.find((el, i) => matchIds.has(segments[i].id));
+        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 300);
+  });
+
+  // Clear search on Escape
+  searchInput.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      segEls.forEach(el => el.classList.remove('hidden', 'search-match'));
+      searchCount.textContent = '';
+    }
+  });
+
+  // ── Pinyin numeric → diacritic tone marks ─────────────────────────────
+  const TONE_MAP = {
+    a: ['ā','á','ǎ','à','a'],
+    e: ['ē','é','ě','è','e'],
+    i: ['ī','í','ǐ','ì','i'],
+    o: ['ō','ó','ǒ','ò','o'],
+    u: ['ū','ú','ǔ','ù','u'],
+  };
+
+  function toTonePinyin(raw) {
+    return raw.split(' ').map(syl => {
+      const tone = parseInt(syl.slice(-1));
+      if (isNaN(tone) || tone < 1 || tone > 5) return syl;
+      const idx = tone - 1;
+      let s = syl.slice(0, -1);
+
+      // u: → ü with tone
+      const uuml = ['ǖ','ǘ','ǚ','ǜ','ü'];
+      s = s.replace('u:', uuml[idx]);
+      // If ü was already placed, nothing else to do for this syllable
+      if (s.includes('ǖ')||s.includes('ǘ')||s.includes('ǚ')||s.includes('ǜ')||
+          (tone===5 && s.includes('ü'))) return s;
+
+      // Rule 1: a or e always takes the mark
+      if (s.includes('a')) return s.replace('a', TONE_MAP.a[idx]);
+      if (s.includes('e')) return s.replace('e', TONE_MAP.e[idx]);
+      // Rule 2: ou → mark the o
+      if (s.includes('ou')) return s.replace('o', TONE_MAP.o[idx]);
+      // Rule 3: last vowel takes the mark
+      for (let j = s.length - 1; j >= 0; j--) {
+        const v = s[j];
+        if (TONE_MAP[v]) return s.slice(0, j) + TONE_MAP[v][idx] + s.slice(j + 1);
+      }
+      return s;
+    }).join(' ');
+  }
+
+  // ── Dictionary popup ───────────────────────────────────────────────────
+  async function showPopup(word, anchorEl) {
+    popupWord.textContent   = word;
+    popupPinyin.textContent = '';
+    popupDefs.innerHTML     = '';
+    popupNF.textContent     = '';
+
+    popup.classList.add('visible');
+    positionPopup(anchorEl);
+
+    try {
+      const entries = await fetch(`/api/dict/${encodeURIComponent(word)}`).then(r => {
+        if (!r.ok) return null;
+        return r.json();
+      });
+
+      if (!entries || entries.length === 0) {
+        // Fall back: look up each character individually and combine pinyins
+        const chars = [...word].filter(c => /\p{Script=Han}/u.test(c));
+        if (chars.length > 1) {
+          const results = await Promise.all(
+            chars.map(ch =>
+              fetch(`/api/dict/${encodeURIComponent(ch)}`)
+                .then(r => r.ok ? r.json() : null)
+                .catch(() => null)
+            )
+          );
+          const combined = results.map((r, i) =>
+            r && r[0] ? toTonePinyin(r[0].pinyin) : chars[i]
+          ).join(' ');
+          popupPinyin.textContent = combined;
+          popupNF.textContent = 'Word not in dictionary — pinyin from individual characters.';
+        } else {
+          popupNF.textContent = 'Not found in dictionary.';
+        }
+        return;
+      }
+
+      const e = entries[0];
+      popupPinyin.textContent = toTonePinyin(e.pinyin);
+      const ul = document.createElement('ul');
+      e.definitions.slice(0, 5).forEach(d => {
+        const li = document.createElement('li');
+        li.textContent = d;
+        ul.appendChild(li);
+      });
+      popupDefs.appendChild(ul);
+    } catch {
+      popupNF.textContent = 'Dictionary lookup failed.';
+    }
+  }
+
+  function positionPopup(anchor) {
+    const rect = anchor.getBoundingClientRect();
+    const pw = 300, ph = 180;
+    let left = rect.left, top = rect.bottom + 8;
+    if (left + pw > window.innerWidth - 16)  left = window.innerWidth - pw - 16;
+    if (top  + ph > window.innerHeight - 16) top  = rect.top - ph - 8;
+    if (left < 8) left = 8;
+    if (top  < 8) top  = 8;
+    popup.style.left = left + 'px';
+    popup.style.top  = top  + 'px';
+  }
+
+  popupClose.addEventListener('click', closePopup);
+
+  document.addEventListener('click', e => {
+    if (!popup.contains(e.target) && !e.target.classList.contains('word')) closePopup();
+  });
+
+  // Close popup on middle-mouse scroll or arrow keys
+  document.addEventListener('wheel', e => {
+    if (popup.classList.contains('visible')) closePopup();
+  }, { passive: true });
+
+  document.addEventListener('keydown', e => {
+    if (popup.classList.contains('visible') &&
+        ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+      closePopup();
+      return;
+    }
+    if (e.key === 'Escape') closePopup();
+    if (e.key === ' ' && e.target === document.body) {
+      e.preventDefault();
+      audio.paused ? audio.play() : audio.pause();
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
