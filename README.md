@@ -72,7 +72,7 @@ In the new Brave window that opens:
 2. Log in to Bilibili with your VIP account
 3. Install **"Get cookies.txt LOCALLY"**, visit [bilibili.com](https://www.bilibili.com), export cookies, and save as `cookies_dl.txt` in the project folder:
 ```
-C:\dev\Personal\bilibili-audio-extractor\cookies_dl.txt
+C:\dev\Personal\BiliBiliWhisperer\cookies_dl.txt
 ```
 
 Then press **Ctrl+C** in the terminal to close the setup script. The script confirms that `cookies_dl.txt` was found before exiting.
@@ -83,7 +83,7 @@ Then press **Ctrl+C** in the terminal to close the setup script. The script conf
 
 The episode browser fetches the season episode list using your main Brave cookies (no region proxy needed for catalog data). Install **"Get cookies.txt LOCALLY"** in your main Brave, visit [bilibili.com](https://www.bilibili.com), export, and save as `cookies.txt` in the project folder:
 ```
-C:\dev\Personal\bilibili-audio-extractor\cookies.txt
+C:\dev\Personal\BiliBiliWhisperer\cookies.txt
 ```
 
 ---
@@ -212,7 +212,7 @@ The downloader Brave profile opens in a new window, fetches the audio stream, do
 ## Project structure
 
 ```
-bilibili-audio-extractor/
+BiliBiliWhisperer/
 ├── extract_audio.py             # Brave automation + Bilibili DASH audio download
 ├── app.py                       # FastAPI entry point, all API routes, browser launch
 ├── bilibili_api.py              # Bilibili season/episode metadata API (requests + cookies)
