@@ -1,8 +1,6 @@
 # Bilibili Chinese Learning App
 
-Extract audio from Bilibili bangumi episodes and study Mandarin through an interactive transcript viewer — with pinyin, English translations, and dictionary lookups for every word.
-
-Built for Chinese-dubbed anime that have no CC subtitle tracks (e.g. 间谍过家家 中配版).
+Extract audio from Bilibili official dubbed and subbed anime episodes and study Mandarin through an interactive transcript viewer — with pinyin, English translations, and dictionary lookups for every word.
 
 ---
 
